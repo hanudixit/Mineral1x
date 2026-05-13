@@ -1,7 +1,52 @@
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import Link from "next/link";
 
 export default async function AdminDashboardPage() {
+    const { userId } = await auth();
+
+  if (!userId) {
+    return (
+      <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="max-w-md rounded-2xl bg-white border border-slate-200 shadow-sm p-8 text-center">
+          <h1 className="text-2xl font-semibold text-slate-900">Admin sign-in required</h1>
+          <p className="mt-3 text-slate-600">
+            Please sign in before viewing the MineralX admin dashboard.
+          </p>
+          <Link
+            href="/sign-in"
+            className="mt-6 inline-flex rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
+          >
+            Sign in
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  const clerkUser = await currentUser();
+  const email = clerkUser?.emailAddresses?.[0]?.emailAddress;
+
+  const allowedAdmins = ["hanudixit.2017@gmail.com"];
+
+  if (!email || !allowedAdmins.includes(email.toLowerCase())) {
+    return (
+      <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="max-w-md rounded-2xl bg-white border border-slate-200 shadow-sm p-8 text-center">
+          <h1 className="text-2xl font-semibold text-slate-900">Access denied</h1>
+          <p className="mt-3 text-slate-600">
+            This dashboard is restricted to MineralX admins.
+          </p>
+          <Link
+            href="/"
+            className="mt-6 inline-flex rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
+          >
+            Back to app
+          </Link>
+        </div>
+      </main>
+    );
+  }
   const [suppliers, importers, rfqs] = await Promise.all([
     db.supplier.findMany({
       orderBy: { createdAt: "desc" },
