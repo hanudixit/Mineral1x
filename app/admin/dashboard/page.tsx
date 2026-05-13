@@ -1,3 +1,4 @@
+import { SupplierStatusActions } from "@/components/SupplierStatusActions";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import Link from "next/link";
@@ -114,6 +115,7 @@ export default async function AdminDashboardPage() {
                   <th className="py-3 pr-4">Country</th>
                   <th className="py-3 pr-4">Contact</th>
                   <th className="py-3 pr-4">Status</th>
+                  <th className="py-3 pr-4">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -129,8 +131,14 @@ export default async function AdminDashboardPage() {
                       {supplier.contactEmail}
                     </td>
                     <td className="py-3 pr-4 text-slate-600">
-                      {supplier.status}
-                    </td>
+  {supplier.status}
+</td>
+<td className="py-3 pr-4">
+  <SupplierStatusActions
+    supplierId={supplier.id}
+    currentStatus={supplier.status}
+  />
+</td>
                   </tr>
                 ))}
               </tbody>
