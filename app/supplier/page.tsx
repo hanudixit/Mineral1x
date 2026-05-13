@@ -387,7 +387,7 @@ export default function SupplierOnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(companyData),
       });
-      if (!supplierRes.ok) throw new Error("Failed to create supplier profile");
+      if (!supplierRes.ok) throw new Error("Supplier profile already exists. Your application is already submitted.");
       const { supplier } = await supplierRes.json();
 
       // 2. Create mineral listings
