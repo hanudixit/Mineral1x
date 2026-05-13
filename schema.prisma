@@ -1,0 +1,438 @@
+// MineralX — Critical Minerals Marketplace
+// Database: PostgreSQL via Supabase
+// ORM: Prisma 5.x
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // Supabase requires this for migrations
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+
+enum UserRole {
+  SUPPLIER
+  IMPORTER
+  ADMIN
+}
+
+enum SupplierStatus {
+  PENDING_REVIEW  // just signed up, docs not yet checked
+  DOCS_REQUESTED  // admin asked for more info
+  VERIFIED        // admin approved, listing is live
+  SUSPENDED       // was live, now paused
+  REJECTED        // did not pass verification
+}
+
+enum MineralType {
+  // Rare Earth Elements
+  NEODYMIUM
+  PRASEODYMIUM
+  DYSPROSIUM
+  TERBIUM
+  LANTHANUM
+  CERIUM
+  SAMARIUM
+  GADOLINIUM
+  YTTRIUM
+  SCANDIUM
+  // Critical Minerals
+  GALLIUM
+  GERMANIUM
+  ANTIMONY
+  TUNGSTEN
+  COBALT
+  LITHIUM
+  GRAPHITE
+  NICKEL
+  MANGANESE
+  SILICON
+  INDIUM
+  TELLURIUM
+  // Alloys / Composites
+  NDFEB_MAGNET      // neodymium-iron-boron finished magnets
+  SMCO_MAGNET       // samarium-cobalt magnets
+  OTHER
+}
+
+enum CertificationType {
+  COUNTRY_OF_ORIGIN       // CoO certificate
+  EXPORT_LICENSE          // government-issued export licence
+  ISO_9001                // quality management
+  ISO_14001               // environmental management
+  REACH_COMPLIANCE        // EU chemical safety
+  CONFLICT_FREE           // OECD due diligence
+  FORGE_MEMBER            // US FORGE zone participant
+  MSP_PARTICIPANT         // Minerals Security Partnership
+  ITAR_REGISTERED         // US munitions list compliance
+  OTHER
+}
+
+enum RFQStatus {
+  OPEN          // submitted, awaiting admin match
+  MATCHING      // admin is working on it
+  MATCHED       // intro sent to ≥1 supplier
+  QUOTED        // supplier(s) responded with pricing
+  NEGOTIATING   // parties are in active discussion
+  CLOSED_WON    // deal completed
+  CLOSED_LOST   // no deal reached
+  WITHDRAWN     // importer pulled the RFQ
+}
+
+enum DealStatus {
+  INTRO_SENT
+  QUOTE_RECEIVED
+  TERMS_AGREED
+  DOCS_PENDING       // waiting on compliance documents
+  DOCS_COMPLETE      // all docs uploaded and verified
+  PAYMENT_PENDING    // platform fee invoice sent
+  CLOSED             // fee paid, deal recorded complete
+}
+
+enum DocumentType {
+  COUNTRY_OF_ORIGIN_CERT
+  END_USE_DECLARATION
+  EXPORT_LICENSE_COPY
+  PURCHASE_ORDER
+  PROFORMA_INVOICE
+  BILL_OF_LADING
+  CERTIFICATE_OF_ANALYSIS
+  CUSTOMS_DECLARATION
+  OTHER
+}
+
+enum IndustryVertical {
+  DEFENSE_AEROSPACE
+  EV_BATTERY
+  SEMICONDUCTOR
+  WIND_ENERGY
+  CONSUMER_ELECTRONICS
+  MEDICAL_DEVICES
+  INDUSTRIAL_MANUFACTURING
+  OTHER
+}
+
+// ─────────────────────────────────────────
+// CORE TABLES
+// ─────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique // Clerk user ID
+  email     String   @unique
+  role      UserRole
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  supplier Supplier?
+  importer Importer?
+
+  @@index([clerkId])
+  @@index([email])
+}
+
+model Supplier {
+  id                String         @id @default(cuid())
+  userId            String         @unique
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Company details
+  companyName       String
+  registrationNumber String?       // company reg number in home country
+  country           String         // ISO 3166-1 alpha-2 (e.g. "AU", "CA", "ZA")
+  address           String
+  website           String?
+  description       String?        @db.Text
+  logoS3Key         String?
+
+  // Contact
+  contactName       String
+  contactTitle      String?
+  contactEmail      String
+  contactPhone      String?
+
+  // Verification
+  status            SupplierStatus @default(PENDING_REVIEW)
+  verifiedAt        DateTime?
+  verifiedByUserId  String?        // admin who approved
+  rejectionReason   String?        @db.Text
+  internalNotes     String?        @db.Text // admin-only notes
+
+  // Billing
+  stripeCustomerId  String?        @unique
+  stripeSubId       String?        @unique // listing fee subscription
+  listingFeeActive  Boolean        @default(false)
+
+  // Relations
+  minerals          MineralListing[]
+  certifications    Certification[]
+  matches           Match[]
+  adminEvents       AdminEvent[]
+
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([status])
+  @@index([country])
+}
+
+model MineralListing {
+  id              String      @id @default(cuid())
+  supplierId      String
+  supplier        Supplier    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  mineralType     MineralType
+  customName      String?     // e.g. "NdFeB Grade N52" — displayed alongside type
+  purityPercent   Decimal?    @db.Decimal(6, 3)  // e.g. 99.500
+  formFactor      String?     // powder / ingot / oxide / finished magnet / etc.
+  
+  // Capacity
+  minOrderMt      Decimal     @db.Decimal(10, 3) // minimum order in metric tonnes
+  maxOrderMt      Decimal?    @db.Decimal(10, 3) // max per order
+  annualCapacityMt Decimal?   @db.Decimal(10, 3)
+  
+  // Pricing (indicative — actual quotes are in Deal)
+  indicativePriceUsdPerKg  Decimal? @db.Decimal(10, 4)
+  priceNotes      String?    // "subject to quantity, LME-linked" etc.
+  
+  // Logistics
+  leadTimeDays    Int?        // typical lead time
+  portOfExport    String?     // e.g. "Port of Fremantle, AU"
+  incoterms       String?     // FOB / CIF / DAP etc.
+  
+  // Provenance
+  mineLocation    String?     // where extracted
+  processingLocation String?  // where refined/processed
+  
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  rfqMatches      Match[]    // which RFQs this listing was matched to
+
+  @@index([supplierId])
+  @@index([mineralType])
+  @@index([isActive])
+}
+
+model Certification {
+  id           String            @id @default(cuid())
+  supplierId   String
+  supplier     Supplier          @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  certType     CertificationType
+  issuerName   String
+  certNumber   String?
+  issuedAt     DateTime?
+  expiresAt    DateTime?
+
+  // Document
+  s3Key        String            // stored in private S3 bucket
+  fileName     String
+  fileSizeBytes Int?
+  
+  verifiedByAdmin Boolean        @default(false)
+  verifiedAt   DateTime?
+
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([supplierId])
+  @@index([expiresAt]) // for expiry alerts
+}
+
+model Importer {
+  id               String           @id @default(cuid())
+  userId           String           @unique
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyName      String
+  registrationNumber String?
+  country          String
+  address          String
+  website          String?
+
+  contactName      String
+  contactTitle     String?
+  contactEmail     String
+  contactPhone     String?
+
+  industryVertical IndustryVertical
+  naicsCode        String?          // North American Industry Classification
+  annualSpendUsd   String?          // rough band: "<100k" / "100k-1m" / "1m-10m" / ">10m"
+
+  // Has this importer been vetted (lighter touch than supplier)
+  isVerified       Boolean          @default(false)
+  verifiedAt       DateTime?
+
+  rfqs             RFQ[]
+
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}
+
+model RFQ {
+  id              String      @id @default(cuid())
+  importerId      String
+  importer        Importer    @relation(fields: [importerId], references: [id], onDelete: Cascade)
+
+  // What they need
+  mineralType     MineralType
+  purityPercent   Decimal?    @db.Decimal(6, 3)
+  formFactor      String?
+  volumeMt        Decimal     @db.Decimal(10, 3)
+  targetPriceUsdPerKg Decimal? @db.Decimal(10, 4)
+
+  // Timeline
+  deliveryDeadline DateTime?
+  deliveryLocation String?    // destination port / address
+
+  // Compliance
+  endUseDeclaration String    @db.Text // required field — cannot be empty
+  endUseCategory   IndustryVertical
+  ultimateEndUser  String?    // if different from importer company
+
+  // Preferred sources (optional)
+  preferredCountries String[] // ISO codes they'd accept
+  excludedCountries  String[] // ISO codes they won't accept (usually "CN")
+
+  additionalNotes  String?    @db.Text
+
+  status          RFQStatus   @default(OPEN)
+  closedAt        DateTime?
+  closedReason    String?
+
+  matches         Match[]
+  adminEvents     AdminEvent[]
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([importerId])
+  @@index([status])
+  @@index([mineralType])
+}
+
+model Match {
+  id              String      @id @default(cuid())
+  rfqId           String
+  rfq             RFQ         @relation(fields: [rfqId], references: [id])
+  supplierId      String
+  supplier        Supplier    @relation(fields: [supplierId], references: [id])
+  mineralListingId String?
+  mineralListing  MineralListing? @relation(fields: [mineralListingId], references: [id])
+
+  // Who made the match and why
+  matchedByUserId String      // admin user id
+  matchNotes      String?     @db.Text
+
+  // Intro communication
+  introSentAt     DateTime?
+  introEmailId    String?     // Resend email ID for tracking
+
+  deal            Deal?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([rfqId, supplierId]) // one match per supplier per RFQ
+  @@index([rfqId])
+  @@index([supplierId])
+}
+
+model Deal {
+  id              String      @id @default(cuid())
+  matchId         String      @unique
+  match           Match       @relation(fields: [matchId], references: [id])
+
+  status          DealStatus  @default(INTRO_SENT)
+
+  // Agreed commercial terms
+  agreedPriceUsdPerKg Decimal? @db.Decimal(10, 4)
+  agreedVolumeMt  Decimal?    @db.Decimal(10, 3)
+  agreedIncoterms String?
+  agreedDeliveryDate DateTime?
+  
+  // Computed total value
+  totalValueUsd   Decimal?    @db.Decimal(14, 2)
+
+  // Platform fee (1.5% of total value)
+  platformFeeUsd  Decimal?    @db.Decimal(10, 2)
+  platformFeeRate Decimal     @default(0.015) @db.Decimal(5, 4)
+
+  // Stripe
+  stripeInvoiceId    String?
+  stripePaymentIntent String?
+  feePaidAt          DateTime?
+
+  closedAt        DateTime?
+  documents       DealDocument[]
+  adminEvents     AdminEvent[]
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model DealDocument {
+  id          String       @id @default(cuid())
+  dealId      String
+  deal        Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  docType     DocumentType
+  s3Key       String
+  fileName    String
+  fileSizeBytes Int?
+  uploadedByUserId String
+  uploadedAt  DateTime     @default(now())
+
+  verifiedByAdmin  Boolean  @default(false)
+  verifiedAt       DateTime?
+  verificationNote String?
+
+  @@index([dealId])
+}
+
+// ─────────────────────────────────────────
+// ADMIN AUDIT LOG
+// ─────────────────────────────────────────
+
+enum AdminEventType {
+  SUPPLIER_APPROVED
+  SUPPLIER_REJECTED
+  SUPPLIER_SUSPENDED
+  DOCS_REQUESTED
+  RFQ_MATCHED
+  MATCH_INTRO_SENT
+  DEAL_CLOSED
+  FEE_COLLECTED
+  NOTE_ADDED
+}
+
+model AdminEvent {
+  id          String         @id @default(cuid())
+  eventType   AdminEventType
+  adminUserId String
+  
+  supplierId  String?
+  supplier    Supplier?      @relation(fields: [supplierId], references: [id])
+  rfqId       String?
+  rfq         RFQ?           @relation(fields: [rfqId], references: [id])
+  dealId      String?
+  deal        Deal?          @relation(fields: [dealId], references: [id])
+  
+  note        String?        @db.Text
+  metadata    Json?          // any extra structured data
+
+  createdAt   DateTime       @default(now())
+
+  @@index([supplierId])
+  @@index([rfqId])
+  @@index([adminUserId])
+  @@index([createdAt])
+}
