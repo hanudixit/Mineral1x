@@ -101,6 +101,35 @@ export default function ImporterOnboardingPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-2xl mx-auto">
+                <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm font-semibold text-slate-900">MineralX navigation</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <a
+              href="/"
+              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+            >
+              Importer profile
+            </a>
+            <a
+              href="/supplier"
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Supplier application
+            </a>
+            <a
+              href="/rfq"
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Submit RFQ
+            </a>
+            <a
+              href="/directory"
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Verified directory
+            </a>
+          </div>
+        </div>
         <div className="mb-8">
           <h1 className="text-2xl font-semibold text-gray-900">Create importer account</h1>
           <p className="text-sm text-gray-500 mt-1">
