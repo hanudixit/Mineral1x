@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireRole, requireAdmin } from "@/lib/auth";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { requireAdmin } from "@/lib/auth";
 import { sendSupplierSubmittedEmail } from "@/lib/email";
 import { z } from "zod";
 import type { MineralType, CertificationType } from "@prisma/client";
@@ -65,7 +66,31 @@ const createSupplierSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const user = await requireRole("SUPPLIER");
+  const { userId: clerkId } = await auth();
+
+if (!clerkId) {
+  return NextResponse.json({ error: "Please sign in first." }, { status: 401 });
+}
+
+const clerkUser = await currentUser();
+const email = clerkUser?.emailAddresses?.[0]?.emailAddress;
+
+if (!email) {
+  return NextResponse.json({ error: "No email found for signed-in user." }, { status: 400 });
+}
+
+const user = await db.user.upsert({
+  where: { clerkId },
+  update: {
+    email,
+    role: "SUPPLIER",
+  },
+  create: {
+    clerkId,
+    email,
+    role: "SUPPLIER",
+  },
+});
   const body = await req.json();
   const parsed = createSupplierSchema.safeParse(body);
 
