@@ -130,6 +130,31 @@ export default function ImporterOnboardingPage() {
             </a>
           </div>
         </div>
+                <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-semibold text-teal-700">How MineralX works</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div>
+              <p className="text-lg font-semibold text-slate-900">1. Suppliers apply</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Mineral suppliers submit company details, mineral availability, and compliance documents.
+              </p>
+            </div>
+
+            <div>
+              <p className="text-lg font-semibold text-slate-900">2. Admin verifies</p>
+              <p className="mt-1 text-sm text-slate-600">
+                MineralX reviews supplier applications before listing them in the verified directory.
+              </p>
+            </div>
+
+            <div>
+              <p className="text-lg font-semibold text-slate-900">3. Importers submit RFQs</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Importers create profiles and submit sourcing requests for critical minerals.
+              </p>
+            </div>
+          </div>
+        </div>
         <div className="mb-8">
           <h1 className="text-2xl font-semibold text-gray-900">Create importer account</h1>
           <p className="text-sm text-gray-500 mt-1">
